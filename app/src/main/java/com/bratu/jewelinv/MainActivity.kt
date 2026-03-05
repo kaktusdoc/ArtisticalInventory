@@ -46,6 +46,8 @@ import kotlin.math.round
 
 private const val ORG_ID = "bratu-studio"
 
+private val categoryOptions = listOf("All", "Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
+
 /* ---------------- activity ---------------- */
 
 class MainActivity : ComponentActivity() {
@@ -120,8 +122,7 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
     var selectedId by remember { mutableStateOf<String?>(null) }
 
     when (screen) {
-        Screen.ADD -> AddProductScreen(
-            db = db, auth = auth,
+        Screen.ADD -> AddItemScreen(
             onClose = { screen = Screen.HOME }
         )
 
@@ -171,6 +172,145 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddItemScreen(onClose: () -> Unit) {
+    var itemName by rememberSaveable { mutableStateOf("") }
+    val addableCategories = categoryOptions
+    var category by rememberSaveable { mutableStateOf(addableCategories.firstOrNull() ?: "") }
+    var priceText by rememberSaveable { mutableStateOf("") }
+    val statusOptions = listOf("Available", "Sold", "Reserved")
+    var status by rememberSaveable { mutableStateOf(statusOptions.first()) }
+    var notes by rememberSaveable { mutableStateOf("") }
+
+    var categoryMenuOpen by remember { mutableStateOf(false) }
+    var statusMenuOpen by remember { mutableStateOf(false) }
+    var saveMessage by remember { mutableStateOf("") }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Text("Add Item", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = itemName,
+            onValueChange = { itemName = it },
+            label = { Text("Item name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        ExposedDropdownMenuBox(
+            expanded = categoryMenuOpen,
+            onExpandedChange = { categoryMenuOpen = !categoryMenuOpen }
+        ) {
+            OutlinedTextField(
+                value = category,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Category") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuOpen) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            ExposedDropdownMenu(
+                expanded = categoryMenuOpen,
+                onDismissRequest = { categoryMenuOpen = false }
+            ) {
+                addableCategories.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            category = option
+                            categoryMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = priceText,
+            onValueChange = { priceText = it },
+            label = { Text("Price") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        ExposedDropdownMenuBox(
+            expanded = statusMenuOpen,
+            onExpandedChange = { statusMenuOpen = !statusMenuOpen }
+        ) {
+            OutlinedTextField(
+                value = status,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Status") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = statusMenuOpen) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            ExposedDropdownMenu(
+                expanded = statusMenuOpen,
+                onDismissRequest = { statusMenuOpen = false }
+            ) {
+                statusOptions.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            status = option
+                            statusMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = notes,
+            onValueChange = { notes = it },
+            label = { Text("Notes") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 120.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Button(
+            onClick = { saveMessage = "Saved locally (UI only)" },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Save")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
+            Text("Back")
+        }
+
+        if (saveMessage.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(saveMessage)
+        }
+    }
+}
 /* ------------- Add Product ------------- */
 
 @OptIn(ExperimentalMaterial3Api::class)
