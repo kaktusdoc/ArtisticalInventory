@@ -14,6 +14,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -447,6 +448,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
 
 /* ---------------- Items List (search + filters) ---------------- */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ItemsListScreen(
     db: FirebaseFirestore,
@@ -611,15 +613,17 @@ fun ItemsListScreen(
         Spacer(Modifier.height(8.dp))
 
         // Category chips
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             categoryOptions.forEach { cat ->
                 FilterChip(
                     selected = activeCategory == cat,
                     onClick = { activeCategory = cat },
-                    label = { Text(cat) }
+                    modifier = Modifier.width(IntrinsicSize.Max),
+                    label = { Text(cat, maxLines = 1, softWrap = false) }
                 )
             }
         }
@@ -627,14 +631,16 @@ fun ItemsListScreen(
         Spacer(Modifier.height(8.dp))
 
         // Price filter chips
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             priceFilterOptions.forEach { mode ->
                 FilterChip(
                     selected = priceFilterMode == mode,
                     onClick = { priceFilterMode = mode },
+                    modifier = Modifier.wrapContentWidth(),
                     label = { Text(mode) }
                 )
             }
@@ -643,14 +649,16 @@ fun ItemsListScreen(
         Spacer(Modifier.height(8.dp))
 
         // Status filter chips
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             statusFilterOptions.forEach { mode ->
                 FilterChip(
                     selected = statusFilterMode == mode,
                     onClick = { statusFilterMode = mode },
+                    modifier = Modifier.wrapContentWidth(),
                     label = { Text(mode) }
                 )
             }
@@ -659,14 +667,16 @@ fun ItemsListScreen(
         Spacer(Modifier.height(8.dp))
 
         // Sort chips
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             sortOptions.forEach { mode ->
                 FilterChip(
                     selected = sortMode == mode,
                     onClick = { sortMode = mode },
+                    modifier = Modifier.wrapContentWidth(),
                     label = { Text(mode) }
                 )
             }
