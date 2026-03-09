@@ -48,6 +48,14 @@ private const val ORG_ID = "bratu-studio"
 
 private val categoryOptions = listOf("All", "Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
 
+data class Item(
+    val name: String,
+    val category: String,
+    val price: Double,
+    val status: String,
+    val notes: String
+)
+
 /* ---------------- activity ---------------- */
 
 class MainActivity : ComponentActivity() {
@@ -120,10 +128,15 @@ private enum class Screen { HOME, LIST, DETAIL, EDIT, ADD }
 fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selectedId by remember { mutableStateOf<String?>(null) }
+    val localItems = remember { mutableStateListOf<Item>() }
 
     when (screen) {
         Screen.ADD -> AddItemScreen(
-            onClose = { screen = Screen.HOME }
+            onClose = { screen = Screen.HOME },
+            onSave = { item ->
+                localItems.add(item)
+                screen = Screen.LIST
+            }
         )
 
         Screen.EDIT -> EditItemScreen(
@@ -140,6 +153,7 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
 
         Screen.LIST -> ItemsListScreen(
             db = db,
+            localItems = localItems,
             onBack = { screen = Screen.HOME },
             onOpen = { id -> selectedId = id; screen = Screen.DETAIL }
         )
@@ -175,7 +189,7 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddItemScreen(onClose: () -> Unit) {
+fun AddItemScreen(onClose: () -> Unit, onSave: (Item) -> Unit) {
     var itemName by rememberSaveable { mutableStateOf("") }
     val addableCategories = categoryOptions
     var category by rememberSaveable { mutableStateOf(addableCategories.firstOrNull() ?: "") }
@@ -186,7 +200,6 @@ fun AddItemScreen(onClose: () -> Unit) {
 
     var categoryMenuOpen by remember { mutableStateOf(false) }
     var statusMenuOpen by remember { mutableStateOf(false) }
-    var saveMessage by remember { mutableStateOf("") }
 
     Column(
         Modifier
@@ -293,7 +306,16 @@ fun AddItemScreen(onClose: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         Button(
-            onClick = { saveMessage = "Saved locally (UI only)" },
+            onClick = {
+                val newItem = Item(
+                    name = itemName.trim(),
+                    category = category,
+                    price = priceText.toDoubleOrNull() ?: 0.0,
+                    status = status,
+                    notes = notes.trim()
+                )
+                onSave(newItem)
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Save")
@@ -303,11 +325,6 @@ fun AddItemScreen(onClose: () -> Unit) {
 
         OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
             Text("Back")
-        }
-
-        if (saveMessage.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
-            Text(saveMessage)
         }
     }
 }
@@ -592,6 +609,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
 @Composable
 fun ItemsListScreen(
     db: FirebaseFirestore,
+    localItems: List<Item>,
     onBack: () -> Unit,
     onOpen: (String) -> Unit
 ) {
@@ -603,17 +621,7 @@ fun ItemsListScreen(
     var searchText by rememberSaveable { mutableStateOf("") }
 
     // Category filter
-    val categoryOptions = listOf(
-        "All",
-        "Necklace",
-        "Earrings",
-        "Bracelet",
-        "Ring",
-        "Pendant",
-        "Set",
-        "Component"
-    )
-    var activeCategory by rememberSaveable { mutableStateOf("All") }
+    var activeCategory by rememberSaveable { mutableStateOf(categoryOptions.first()) }
 
     // Sort options
     val sortOptions = listOf("Newest", "Oldest", "Price ↑", "Price ↓")
@@ -636,15 +644,14 @@ fun ItemsListScreen(
             .addOnSuccessListener { snap ->
                 rows = snap.documents.map { d ->
                     val photos = d.get("photos") as? List<*>
-                    val thumb =
-                        (photos?.firstOrNull() as? Map<*, *>)?.get("cloudUrl") as? String
+                    val thumb = (photos?.firstOrNull() as? Map<*, *>)?.get("cloudUrl") as? String
                     mapOf(
                         "id" to d.id,
                         "title" to (d.getString("title") ?: ""),
                         "sku" to (d.getString("sku") ?: ""),
                         "price" to (d.getDouble("priceComputed") ?: 0.0),
                         "category" to (d.getString("category") ?: ""),
-                        "status" to (d.getString("status") ?: ""),   // status
+                        "status" to (d.getString("status") ?: ""),
                         "thumb" to thumb,
                         "createdAt" to (d.getLong("createdAt") ?: 0L)
                     )
@@ -660,20 +667,33 @@ fun ItemsListScreen(
     // Apply search, category, status, price filter, and sort
     val displayedItems = remember(
         rows,
+        localItems,
         searchText,
         activeCategory,
         sortMode,
         priceFilterMode,
         statusFilterMode
     ) {
-        val base = rows ?: emptyList()
+        val remoteBase = rows ?: emptyList()
+        val localRows = localItems.mapIndexed { index, item ->
+            mapOf(
+                "id" to "local-$index-${item.name}",
+                "title" to item.name,
+                "sku" to "LOCAL",
+                "price" to item.price,
+                "category" to item.category,
+                "status" to item.status,
+                "thumb" to null,
+                "createdAt" to Long.MAX_VALUE - index
+            )
+        }
+        val base = localRows + remoteBase
 
-        // Map status filter label -> code stored in Firestore
         val statusCode: String? = when (statusFilterMode) {
             "Available" -> "available"
             "Reserved" -> "reserved"
             "Sold" -> "sold"
-            else -> null // "All statuses"
+            else -> null
         }
 
         val filtered = base.filter { row ->
@@ -683,8 +703,8 @@ fun ItemsListScreen(
             val statusRaw = (row["status"] as? String) ?: ""
 
             val statusNorm = when (statusRaw.lowercase()) {
-                "in_progress" -> "available" // old docs compatibility
-                "" -> "available"            // blank => available
+                "in_progress" -> "available"
+                "" -> "available"
                 else -> statusRaw.lowercase()
             }
 
@@ -722,198 +742,196 @@ fun ItemsListScreen(
         }
     }
 
-    val totalCount = rows?.size ?: 0
+    val totalCount = (rows?.size ?: 0) + localItems.size
     val visibleCount = displayedItems.size
+    val listBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
 
-    Column(
-        Modifier
+    LazyColumn(
+        modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        contentPadding = PaddingValues(bottom = listBottomPadding)
     ) {
-        // Top bar
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Items", style = MaterialTheme.typography.titleLarge)
-            OutlinedButton(onClick = onBack) { Text("Back") }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Search box
-        OutlinedTextField(
-            value = searchText,
-            onValueChange = { searchText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Search") },
-            singleLine = true
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // Category chips
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            categoryOptions.forEach { cat ->
-                FilterChip(
-                    selected = activeCategory == cat,
-                    onClick = { activeCategory = cat },
-                    modifier = Modifier.width(IntrinsicSize.Max),
-                    label = { Text(cat, maxLines = 1, softWrap = false) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Price filter chips
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            priceFilterOptions.forEach { mode ->
-                FilterChip(
-                    selected = priceFilterMode == mode,
-                    onClick = { priceFilterMode = mode },
-                    modifier = Modifier.wrapContentWidth(),
-                    label = { Text(mode) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Status filter chips
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            statusFilterOptions.forEach { mode ->
-                FilterChip(
-                    selected = statusFilterMode == mode,
-                    onClick = { statusFilterMode = mode },
-                    modifier = Modifier.wrapContentWidth(),
-                    label = { Text(mode) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Sort chips
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            sortOptions.forEach { mode ->
-                FilterChip(
-                    selected = sortMode == mode,
-                    onClick = { sortMode = mode },
-                    modifier = Modifier.wrapContentWidth(),
-                    label = { Text(mode) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Result count + Clear filters
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Showing $visibleCount of $totalCount items",
-                style = MaterialTheme.typography.bodySmall
-            )
-            TextButton(
-                onClick = {
-                    // reset all filters
-                    searchText = ""
-                    activeCategory = "All"
-                    priceFilterMode = "All prices"
-                    statusFilterMode = "All statuses"
-                    sortMode = "Newest"
-                }
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Clear filters")
+                Text("Items", style = MaterialTheme.typography.titleLarge)
+                OutlinedButton(onClick = onBack) { Text("Back") }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search") },
+                singleLine = true
+            )
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                categoryOptions.forEach { cat ->
+                    FilterChip(
+                        selected = activeCategory == cat,
+                        onClick = { activeCategory = cat },
+                        modifier = Modifier.width(IntrinsicSize.Max),
+                        label = { Text(cat, maxLines = 1, softWrap = false) }
+                    )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                priceFilterOptions.forEach { mode ->
+                    FilterChip(
+                        selected = priceFilterMode == mode,
+                        onClick = { priceFilterMode = mode },
+                        modifier = Modifier.wrapContentWidth(),
+                        label = { Text(mode) }
+                    )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                statusFilterOptions.forEach { mode ->
+                    FilterChip(
+                        selected = statusFilterMode == mode,
+                        onClick = { statusFilterMode = mode },
+                        modifier = Modifier.wrapContentWidth(),
+                        label = { Text(mode) }
+                    )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                sortOptions.forEach { mode ->
+                    FilterChip(
+                        selected = sortMode == mode,
+                        onClick = { sortMode = mode },
+                        modifier = Modifier.wrapContentWidth(),
+                        label = { Text(mode) }
+                    )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Showing $visibleCount of $totalCount items",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(
+                    onClick = {
+                        searchText = ""
+                        activeCategory = "All"
+                        priceFilterMode = "All prices"
+                        statusFilterMode = "All statuses"
+                        sortMode = "Newest"
+                    }
+                ) {
+                    Text("Clear filters")
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
 
         when {
             loading -> {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             }
 
             error != null -> {
-                Text("Error: $error", color = MaterialTheme.colorScheme.error)
+                item { Text("Error: $error", color = MaterialTheme.colorScheme.error) }
             }
 
             else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(displayedItems) { row ->
-                        val title = row["title"] as String
-                        val sku = row["sku"] as String
-                        val price = row["price"] as Double
-                        val thumb = row["thumb"] as? String
-                        val category = row["category"] as String
-                        val statusRaw = (row["status"] as? String) ?: ""
-                        val id = row["id"] as String
+                items(displayedItems) { row ->
+                    val title = row["title"] as String
+                    val sku = row["sku"] as String
+                    val price = row["price"] as Double
+                    val thumb = row["thumb"] as? String
+                    val category = row["category"] as String
+                    val statusRaw = (row["status"] as? String) ?: ""
+                    val id = row["id"] as String
 
-                        val statusLabel = when (statusRaw.lowercase()) {
-                            "sold" -> "Sold"
-                            "reserved" -> "Reserved"
-                            "available", "" -> "Available"
-                            "in_progress" -> "Available"
-                            else -> statusRaw
-                        }
-
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpen(id) }
-                                .padding(vertical = 6.dp)
-                        ) {
-                            if (thumb != null) {
-                                AsyncImage(
-                                    model = thumb,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.size(64.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text(title, style = MaterialTheme.typography.titleMedium)
-                                Text("SKU: $sku — $${"%.2f".format(price)}")
-                                Text("Category: $category  •  Status: $statusLabel")
-                            }
-                        }
-                        HorizontalDivider()
+                    val statusLabel = when (statusRaw.lowercase()) {
+                        "sold" -> "Sold"
+                        "reserved" -> "Reserved"
+                        "available", "" -> "Available"
+                        "in_progress" -> "Available"
+                        else -> statusRaw
                     }
+
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpen(id) }
+                            .padding(vertical = 6.dp)
+                    ) {
+                        if (thumb != null) {
+                            AsyncImage(
+                                model = thumb,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleMedium)
+                            Text("SKU: $sku - $${"%.2f".format(price)}")
+                            Text("Category: $category")
+                            Text("Status: $statusLabel")
+                        }
+                    }
+                    HorizontalDivider()
                 }
             }
         }
     }
 }
-
-
-
-
-
-
 /* ---------------- Item Detail (minimal) ---------------- */
 
 @Composable
