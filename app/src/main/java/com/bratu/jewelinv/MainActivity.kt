@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.graphics.scale
+import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -59,6 +60,7 @@ private val gemLabels    = mapOf("CRY" to "CRY (Crystal)", "PRL" to "PRL (Pearl)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { AppRoot() }
     }
 }
@@ -215,16 +217,16 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
     var hourlyRateText by remember { mutableStateOf("25") }
     var markupText by remember { mutableStateOf("2.2") }
 
-    // One photo (first)
-    var pickedUri by remember { mutableStateOf<Uri?>(null) }
+    // Up to 6 photos
+    val pickedUris = remember { mutableStateListOf<Uri>() }
     val pickImage = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri -> pickedUri = uri }
+    ) { uri -> if (uri != null && pickedUris.size < 6) pickedUris.add(uri) }
 
     var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
     val takePhoto = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
-    ) { success -> if (success) pickedUri = tempPhotoUri }
+    ) { success -> if (success) { val u = tempPhotoUri; if (u != null && pickedUris.size < 6) pickedUris.add(u) } }
 
     var statusMsg by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
@@ -242,6 +244,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+            .navigationBarsPadding().imePadding()
     ) {
         Text("Add Product", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
@@ -360,26 +363,34 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
         Spacer(Modifier.height(12.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            }) { Text("Add photo") }
-
-            Button(onClick = {
-                val uri = createImageUri(context)
-                tempPhotoUri = uri
-                takePhoto.launch(uri)
-            }) { Text("Take photo") }
-
-            if (pickedUri != null) Text("1 photo selected")
+            Button(
+                enabled = pickedUris.size < 6,
+                onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            ) { Text("Add photo") }
+            Button(
+                enabled = pickedUris.size < 6,
+                onClick = { val uri = createImageUri(context); tempPhotoUri = uri; takePhoto.launch(uri) }
+            ) { Text("Take photo") }
+            if (pickedUris.isNotEmpty()) Text("${pickedUris.size}/6")
         }
-        Spacer(Modifier.height(8.dp))
-        if (pickedUri != null) {
-            AsyncImage(
-                model = pickedUri,
-                contentDescription = "preview",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(180.dp)
-            )
+        if (pickedUris.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(pickedUris) { uri ->
+                    androidx.compose.foundation.layout.Box {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(100.dp)
+                        )
+                        TextButton(
+                            onClick = { pickedUris.remove(uri) },
+                            modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
+                        ) { Text("✕", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -441,45 +452,55 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                     )
 
                     db.collection("items").add(base).addOnSuccessListener { ref ->
-                        val uri = pickedUri
-                        if (uri == null) {
+                        if (pickedUris.isEmpty()) {
                             statusMsg = "Saved: ${ref.id}    SKU: $sku"
                             saving = false
                             return@addOnSuccessListener
                         }
-                        try {
-                            val (bytes, size) = compressForUpload(
-                                contentResolver = resolver,
-                                uri = uri, longEdge = 1600, jpegQuality = 88
-                            )
-                            val path = "images/$uid/items/${ref.id}/1.jpg"
-                            FirebaseStorage.getInstance().reference.child(path)
-                                .putBytes(bytes)
-                                .addOnSuccessListener {
-                                    FirebaseStorage.getInstance().reference.child(path)
-                                        .downloadUrl.addOnSuccessListener { dl ->
-                                            val photos = listOf(
-                                                mapOf("cloudUrl" to dl.toString(), "w" to size.first, "h" to size.second)
-                                            )
-                                            ref.update(mapOf("photos" to photos, "updatedAt" to System.currentTimeMillis()))
-                                                .addOnSuccessListener {
-                                                    statusMsg = "Saved: ${ref.id}  SKU: $sku  + Photo uploaded ✔"
-                                                    saving = false
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    statusMsg = "Saved but photo link failed: ${e.message}"
-                                                    saving = false
-                                                }
-                                        }
-                                }
-                                .addOnFailureListener { e ->
-                                    statusMsg = "Saved but photo upload failed: ${e.message}"
-                                    saving = false
-                                }
-                        } catch (e: Exception) {
-                            statusMsg = "Saved but image read failed: ${e.message}"
-                            saving = false
+
+                        fun uploadNext(index: Int, acc: List<Map<*, *>>) {
+                            if (index >= pickedUris.size) {
+                                ref.update(mapOf("photos" to acc, "updatedAt" to System.currentTimeMillis()))
+                                    .addOnSuccessListener {
+                                        statusMsg = "Saved: ${ref.id}  SKU: $sku  + ${acc.size} photo(s) ✔"
+                                        saving = false
+                                    }
+                                    .addOnFailureListener { e ->
+                                        statusMsg = "Saved but photo link failed: ${e.message}"
+                                        saving = false
+                                    }
+                                return
+                            }
+                            try {
+                                val (bytes, size) = compressForUpload(
+                                    contentResolver = resolver,
+                                    uri = pickedUris[index], longEdge = 1600, jpegQuality = 88
+                                )
+                                val path = "images/$uid/items/${ref.id}/${index + 1}.jpg"
+                                FirebaseStorage.getInstance().reference.child(path)
+                                    .putBytes(bytes)
+                                    .addOnSuccessListener {
+                                        FirebaseStorage.getInstance().reference.child(path)
+                                            .downloadUrl.addOnSuccessListener { dl ->
+                                                val photo: Map<*, *> = mapOf(
+                                                    "cloudUrl" to dl.toString(),
+                                                    "w" to size.first,
+                                                    "h" to size.second
+                                                )
+                                                uploadNext(index + 1, acc + photo)
+                                            }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        statusMsg = "Saved but photo ${index + 1} upload failed: ${e.message}"
+                                        saving = false
+                                    }
+                            } catch (e: Exception) {
+                                statusMsg = "Saved but image ${index + 1} read failed: ${e.message}"
+                                saving = false
+                            }
                         }
+
+                        uploadNext(0, emptyList())
                     }.addOnFailureListener { e ->
                         statusMsg = "Save error: ${e.message}"
                         saving = false
@@ -1044,6 +1065,8 @@ fun EditItemScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Edit Item", style = MaterialTheme.typography.titleLarge)
