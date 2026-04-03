@@ -197,7 +197,8 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
         "Necklace" to "NK", "Earrings" to "ER", "Bracelet" to "BR",
         "Ring" to "RG", "Pendant" to "PD", "Set" to "ST", "Component" to "CP"
     )
-    var category by remember { mutableStateOf(categories.last()) }
+    var category by remember { mutableStateOf(categories.first()) }
+    var catMenuOpen by remember { mutableStateOf(false) }
     var materialsText by remember { mutableStateOf("") }
     var priceMode by remember { mutableStateOf("manual") }
     var manualPriceText by remember { mutableStateOf("") }
@@ -249,21 +250,23 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
             singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
 
-        // Category dropdown (tap field to open)
-        var catMenu by remember { mutableStateOf(false) }
-        Box {
+        ExposedDropdownMenuBox(
+            expanded = catMenuOpen,
+            onExpandedChange = { catMenuOpen = !catMenuOpen }
+        ) {
             OutlinedTextField(
                 value = category,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Category *") },
-                modifier = Modifier.fillMaxWidth().clickable { catMenu = true }
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catMenuOpen) },
+                modifier = Modifier.fillMaxWidth().menuAnchor()
             )
-            DropdownMenu(expanded = catMenu, onDismissRequest = { catMenu = false }) {
+            ExposedDropdownMenu(expanded = catMenuOpen, onDismissRequest = { catMenuOpen = false }) {
                 categories.forEach { c ->
                     DropdownMenuItem(
                         text = { Text(c) },
-                        onClick = { category = c; catMenu = false }
+                        onClick = { category = c; catMenuOpen = false }
                     )
                 }
             }
