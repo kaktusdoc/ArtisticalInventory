@@ -48,6 +48,11 @@ private const val ORG_ID = "bratu-studio"
 
 private val categoryOptions = listOf("All", "Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
 
+private val metalOptions = listOf("None", "SIL", "GLD", "RGD", "BRZ", "COP")
+private val metalLabels  = mapOf("SIL" to "SIL (Silver)", "GLD" to "GLD (Gold)", "RGD" to "RGD (Rose Gold)", "BRZ" to "BRZ (Bronze)", "COP" to "COP (Copper)")
+private val gemOptions   = listOf("None", "CRY", "PRL", "TRQ", "AMT", "OPL", "OTH")
+private val gemLabels    = mapOf("CRY" to "CRY (Crystal)", "PRL" to "PRL (Pearl)", "TRQ" to "TRQ (Turquoise)", "AMT" to "AMT (Amethyst)", "OPL" to "OPL (Opal)", "OTH" to "OTH (Other)")
+
 
 /* ---------------- activity ---------------- */
 
@@ -198,8 +203,10 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
     var manualPriceText by remember { mutableStateOf("") }
 
     // Optional helpers (for SKU)
-    var metalCode by remember { mutableStateOf("") } // e.g., SIL
-    var gemCode by remember { mutableStateOf("") }   // e.g., CRY
+    var metalCode by remember { mutableStateOf("None") }
+    var gemCode by remember { mutableStateOf("None") }
+    var metalMenuOpen by remember { mutableStateOf(false) }
+    var gemMenuOpen by remember { mutableStateOf(false) }
 
     // Formula fields (optional)
     var materialCostText by remember { mutableStateOf("") }
@@ -301,10 +308,50 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
         Spacer(Modifier.height(8.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(metalCode, { metalCode = it }, label = { Text("Metal code (e.g., SIL)") },
-                singleLine = true, modifier = Modifier.weight(1f))
-            OutlinedTextField(gemCode, { gemCode = it }, label = { Text("Gem code (e.g., CRY)") },
-                singleLine = true, modifier = Modifier.weight(1f))
+            ExposedDropdownMenuBox(
+                expanded = metalMenuOpen,
+                onExpandedChange = { metalMenuOpen = !metalMenuOpen },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    value = metalLabels[metalCode] ?: metalCode,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Metal") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = metalMenuOpen) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                )
+                ExposedDropdownMenu(expanded = metalMenuOpen, onDismissRequest = { metalMenuOpen = false }) {
+                    metalOptions.forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text(metalLabels[code] ?: code) },
+                            onClick = { metalCode = code; metalMenuOpen = false }
+                        )
+                    }
+                }
+            }
+            ExposedDropdownMenuBox(
+                expanded = gemMenuOpen,
+                onExpandedChange = { gemMenuOpen = !gemMenuOpen },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    value = gemLabels[gemCode] ?: gemCode,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Gem") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gemMenuOpen) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                )
+                ExposedDropdownMenu(expanded = gemMenuOpen, onDismissRequest = { gemMenuOpen = false }) {
+                    gemOptions.forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text(gemLabels[code] ?: code) },
+                            onClick = { gemCode = code; gemMenuOpen = false }
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -353,8 +400,8 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                 }.addOnSuccessListener { seq ->
                     val sku = generateSku(
                         typeCode = typeCode,
-                        metal = metalCode.ifBlank { "NON" },
-                        gem = gemCode.ifBlank { "NON" },
+                        metal = if (metalCode == "None") "NON" else metalCode,
+                        gem = if (gemCode == "None") "NON" else gemCode,
                         year = year,
                         seq = seq
                     )
@@ -369,8 +416,8 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                         "tags" to listOf<String>(),
                         "materials" to materialsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
                         "gemstones" to listOf<String>(),
-                        "metal" to metalCode.ifBlank { null },
-                        "gem" to gemCode.ifBlank { null },
+                        "metal" to if (metalCode == "None") null else metalCode,
+                        "gem" to if (gemCode == "None") null else gemCode,
                         "status" to "available",
                         "pricing" to mapOf(
                             "mode" to priceMode,
@@ -931,8 +978,12 @@ fun EditItemScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success -> if (success) newPhotoUri = tempPhotoUri }
 
+    var metalCode by remember { mutableStateOf("None") }
+    var gemCode by remember { mutableStateOf("None") }
     var catMenuOpen by remember { mutableStateOf(false) }
     var statusMenuOpen by remember { mutableStateOf(false) }
+    var metalMenuOpen by remember { mutableStateOf(false) }
+    var gemMenuOpen by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var saveMsg by remember { mutableStateOf("") }
@@ -955,7 +1006,7 @@ fun EditItemScreen(
                 val d = doc.data ?: emptyMap()
                 title = (d["title"] as? String) ?: ""
                 val loadedCat = (d["category"] as? String) ?: ""
-                if (loadedCat in categories) category = loadedCat
+                category = if (loadedCat in categories) loadedCat else categories.first()
                 val mats = (d["materials"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                 materialsText = mats.joinToString(", ")
                 status = when ((d["status"] as? String)?.lowercase()) {
@@ -975,6 +1026,10 @@ fun EditItemScreen(
                     hourlyRateText = (formula?.get("hourlyRate") as? Double)?.let { "%.2f".format(it) } ?: "25"
                     markupText = (formula?.get("markup") as? Double)?.let { "%.2f".format(it) } ?: "2.2"
                 }
+                val loadedMetal = d["metal"] as? String
+                metalCode = if (loadedMetal != null && loadedMetal in metalOptions) loadedMetal else "None"
+                val loadedGem = d["gem"] as? String
+                gemCode = if (loadedGem != null && loadedGem in gemOptions) loadedGem else "None"
                 existingPhotos = (d["photos"] as? List<*>)?.filterIsInstance<Map<*, *>>() ?: emptyList()
                 loading = false
             }
@@ -1042,6 +1097,54 @@ fun EditItemScreen(
                     ExposedDropdownMenu(expanded = statusMenuOpen, onDismissRequest = { statusMenuOpen = false }) {
                         statusOptions.forEach { s ->
                             DropdownMenuItem(text = { Text(s) }, onClick = { status = s; statusMenuOpen = false })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    ExposedDropdownMenuBox(
+                        expanded = metalMenuOpen,
+                        onExpandedChange = { metalMenuOpen = !metalMenuOpen },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = metalLabels[metalCode] ?: metalCode,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Metal") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = metalMenuOpen) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(expanded = metalMenuOpen, onDismissRequest = { metalMenuOpen = false }) {
+                            metalOptions.forEach { code ->
+                                DropdownMenuItem(
+                                    text = { Text(metalLabels[code] ?: code) },
+                                    onClick = { metalCode = code; metalMenuOpen = false }
+                                )
+                            }
+                        }
+                    }
+                    ExposedDropdownMenuBox(
+                        expanded = gemMenuOpen,
+                        onExpandedChange = { gemMenuOpen = !gemMenuOpen },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = gemLabels[gemCode] ?: gemCode,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Gem") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gemMenuOpen) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(expanded = gemMenuOpen, onDismissRequest = { gemMenuOpen = false }) {
+                            gemOptions.forEach { code ->
+                                DropdownMenuItem(
+                                    text = { Text(gemLabels[code] ?: code) },
+                                    onClick = { gemCode = code; gemMenuOpen = false }
+                                )
+                            }
                         }
                     }
                 }
@@ -1140,6 +1243,8 @@ fun EditItemScreen(
                             "category" to category,
                             "materials" to materialsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
                             "status" to statusCode,
+                            "metal" to if (metalCode == "None") null else metalCode,
+                            "gem" to if (gemCode == "None") null else gemCode,
                             "pricing" to mapOf(
                                 "mode" to priceMode,
                                 "manualPrice" to (if (priceMode == "manual") manualPriceText.toDoubleOrNull() else null),
