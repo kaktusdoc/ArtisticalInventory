@@ -48,13 +48,6 @@ private const val ORG_ID = "bratu-studio"
 
 private val categoryOptions = listOf("All", "Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
 
-data class Item(
-    val name: String,
-    val category: String,
-    val price: Double,
-    val status: String,
-    val notes: String
-)
 
 /* ---------------- activity ---------------- */
 
@@ -128,15 +121,11 @@ private enum class Screen { HOME, LIST, DETAIL, EDIT, ADD }
 fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selectedId by remember { mutableStateOf<String?>(null) }
-    val localItems = remember { mutableStateListOf<Item>() }
 
     when (screen) {
-        Screen.ADD -> AddItemScreen(
-            onClose = { screen = Screen.HOME },
-            onSave = { item ->
-                localItems.add(item)
-                screen = Screen.LIST
-            }
+        Screen.ADD -> AddProductScreen(
+            db = db, auth = auth,
+            onClose = { screen = Screen.HOME }
         )
 
         Screen.EDIT -> EditItemScreen(
@@ -153,7 +142,6 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
 
         Screen.LIST -> ItemsListScreen(
             db = db,
-            localItems = localItems,
             onBack = { screen = Screen.HOME },
             onOpen = { id -> selectedId = id; screen = Screen.DETAIL }
         )
@@ -187,147 +175,7 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddItemScreen(onClose: () -> Unit, onSave: (Item) -> Unit) {
-    var itemName by rememberSaveable { mutableStateOf("") }
-    val addableCategories = categoryOptions
-    var category by rememberSaveable { mutableStateOf(addableCategories.firstOrNull() ?: "") }
-    var priceText by rememberSaveable { mutableStateOf("") }
-    val statusOptions = listOf("Available", "Sold", "Reserved")
-    var status by rememberSaveable { mutableStateOf(statusOptions.first()) }
-    var notes by rememberSaveable { mutableStateOf("") }
 
-    var categoryMenuOpen by remember { mutableStateOf(false) }
-    var statusMenuOpen by remember { mutableStateOf(false) }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Text("Add Item", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = itemName,
-            onValueChange = { itemName = it },
-            label = { Text("Item name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        ExposedDropdownMenuBox(
-            expanded = categoryMenuOpen,
-            onExpandedChange = { categoryMenuOpen = !categoryMenuOpen }
-        ) {
-            OutlinedTextField(
-                value = category,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Category") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuOpen) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
-            )
-            ExposedDropdownMenu(
-                expanded = categoryMenuOpen,
-                onDismissRequest = { categoryMenuOpen = false }
-            ) {
-                addableCategories.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            category = option
-                            categoryMenuOpen = false
-                        }
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = priceText,
-            onValueChange = { priceText = it },
-            label = { Text("Price") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        ExposedDropdownMenuBox(
-            expanded = statusMenuOpen,
-            onExpandedChange = { statusMenuOpen = !statusMenuOpen }
-        ) {
-            OutlinedTextField(
-                value = status,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Status") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = statusMenuOpen) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
-            )
-            ExposedDropdownMenu(
-                expanded = statusMenuOpen,
-                onDismissRequest = { statusMenuOpen = false }
-            ) {
-                statusOptions.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            status = option
-                            statusMenuOpen = false
-                        }
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = notes,
-            onValueChange = { notes = it },
-            label = { Text("Notes") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 120.dp)
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        Button(
-            onClick = {
-                val newItem = Item(
-                    name = itemName.trim(),
-                    category = category,
-                    price = priceText.toDoubleOrNull() ?: 0.0,
-                    status = status,
-                    notes = notes.trim()
-                )
-                onSave(newItem)
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Save")
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-            Text("Back")
-        }
-    }
-}
 /* ------------- Add Product ------------- */
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -523,7 +371,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                         "gemstones" to listOf<String>(),
                         "metal" to metalCode.ifBlank { null },
                         "gem" to gemCode.ifBlank { null },
-                        "status" to "in_progress",
+                        "status" to "available",
                         "pricing" to mapOf(
                             "mode" to priceMode,
                             "manualPrice" to (if (priceMode == "manual") manualPriceText.toDoubleOrNull() else null),
@@ -609,7 +457,6 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
 @Composable
 fun ItemsListScreen(
     db: FirebaseFirestore,
-    localItems: List<Item>,
     onBack: () -> Unit,
     onOpen: (String) -> Unit
 ) {
@@ -667,27 +514,13 @@ fun ItemsListScreen(
     // Apply search, category, status, price filter, and sort
     val displayedItems = remember(
         rows,
-        localItems,
         searchText,
         activeCategory,
         sortMode,
         priceFilterMode,
         statusFilterMode
     ) {
-        val remoteBase = rows ?: emptyList()
-        val localRows = localItems.mapIndexed { index, item ->
-            mapOf(
-                "id" to "local-$index-${item.name}",
-                "title" to item.name,
-                "sku" to "LOCAL",
-                "price" to item.price,
-                "category" to item.category,
-                "status" to item.status,
-                "thumb" to null,
-                "createdAt" to Long.MAX_VALUE - index
-            )
-        }
-        val base = localRows + remoteBase
+        val base = rows ?: emptyList()
 
         val statusCode: String? = when (statusFilterMode) {
             "Available" -> "available"
@@ -742,7 +575,7 @@ fun ItemsListScreen(
         }
     }
 
-    val totalCount = (rows?.size ?: 0) + localItems.size
+    val totalCount = rows?.size ?: 0
     val visibleCount = displayedItems.size
     val listBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
 
@@ -932,7 +765,7 @@ fun ItemsListScreen(
         }
     }
 }
-/* ---------------- Item Detail (minimal) ---------------- */
+/* ---------------- Item Detail ---------------- */
 
 @Composable
 fun ItemDetailScreen(
@@ -944,6 +777,8 @@ fun ItemDetailScreen(
     var data by remember { mutableStateOf<Map<String, Any?>?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(id) {
         db.collection("items").document(id).get()
@@ -951,12 +786,38 @@ fun ItemDetailScreen(
             .addOnFailureListener { e -> error = e.message; loading = false }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete item?") },
+            text = { Text("This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        deleting = true
+                        db.collection("items").document(id).delete()
+                            .addOnSuccessListener { onBack() }
+                            .addOnFailureListener { deleting = false }
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Item Details", style = MaterialTheme.typography.titleLarge)
-            Row {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onBack) { Text("Back") }
-                Spacer(Modifier.width(8.dp))
                 Button(onClick = onEdit) { Text("Edit") }
             }
         }
@@ -967,18 +828,75 @@ fun ItemDetailScreen(
             error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error)
             else -> {
                 val d = data ?: return@Column
-                Text(d["title"] as? String ?: "")
+
+                val photos = d["photos"] as? List<*>
+                if (!photos.isNullOrEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(photos) { photo ->
+                            val url = (photo as? Map<*, *>)?.get("cloudUrl") as? String
+                            if (url != null) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(160.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                Text(d["title"] as? String ?: "", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
                 Text("SKU: ${d["sku"] ?: ""}")
                 Text("Category: ${d["category"] ?: ""}")
+
+                val statusRaw = (d["status"] as? String) ?: ""
+                val statusLabel = when (statusRaw.lowercase()) {
+                    "sold" -> "Sold"
+                    "reserved" -> "Reserved"
+                    else -> "Available"
+                }
+                Text("Status: $statusLabel")
                 Text("Price: $${"%.2f".format((d["priceComputed"] as? Double) ?: 0.0)}")
-                Text("Materials:\n${(d["materials"] as? List<*>)?.joinToString() ?: ""}")
+
+                val materials = (d["materials"] as? List<*>)?.filterIsInstance<String>()
+                if (!materials.isNullOrEmpty()) Text("Materials: ${materials.joinToString()}")
+
+                val gemstones = (d["gemstones"] as? List<*>)?.filterIsInstance<String>()
+                if (!gemstones.isNullOrEmpty()) Text("Gemstones: ${gemstones.joinToString()}")
+
+                val metal = d["metal"] as? String
+                if (!metal.isNullOrBlank()) Text("Metal: $metal")
+
+                val gem = d["gem"] as? String
+                if (!gem.isNullOrBlank()) Text("Gem: $gem")
+
+                val tags = (d["tags"] as? List<*>)?.filterIsInstance<String>()
+                if (!tags.isNullOrEmpty()) Text("Tags: ${tags.joinToString()}")
+
+                val notes = d["notes"] as? String
+                if (!notes.isNullOrBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Notes: $notes")
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { showDeleteConfirm = true },
+                    enabled = !deleting,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (deleting) "Deleting…" else "Delete") }
             }
         }
     }
 }
 
-/* ---------------- Edit Item (title & price quick) ---------------- */
+/* ---------------- Edit Item ---------------- */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditItemScreen(
     db: FirebaseFirestore,
@@ -986,25 +904,89 @@ fun EditItemScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit
 ) {
+    val context = LocalContext.current
+    val resolver = context.contentResolver
+    val uid = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+
     var title by remember { mutableStateOf("") }
-    var priceText by remember { mutableStateOf("") }
+    val categories = listOf("Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
+    var category by remember { mutableStateOf(categories.first()) }
+    var materialsText by remember { mutableStateOf("") }
+    val statusOptions = listOf("Available", "Reserved", "Sold")
+    var status by remember { mutableStateOf(statusOptions.first()) }
+    var priceMode by remember { mutableStateOf("manual") }
+    var manualPriceText by remember { mutableStateOf("") }
+    var materialCostText by remember { mutableStateOf("") }
+    var laborHoursText by remember { mutableStateOf("") }
+    var hourlyRateText by remember { mutableStateOf("25") }
+    var markupText by remember { mutableStateOf("2.2") }
+
+    var existingPhotos by remember { mutableStateOf<List<Map<*, *>>>(emptyList()) }
+    var newPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    val pickImage = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri -> newPhotoUri = uri }
+    val takePhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success -> if (success) newPhotoUri = tempPhotoUri }
+
+    var catMenuOpen by remember { mutableStateOf(false) }
+    var statusMenuOpen by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var saveMsg by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun computePrice(): Double =
+        if (priceMode == "manual") {
+            manualPriceText.toDoubleOrNull() ?: 0.0
+        } else {
+            val mat = materialCostText.toDoubleOrNull() ?: 0.0
+            val hrs = laborHoursText.toDoubleOrNull() ?: 0.0
+            val rate = hourlyRateText.toDoubleOrNull() ?: 25.0
+            val mk = markupText.toDoubleOrNull() ?: 2.2
+            round((mat * mk + hrs * rate) * 100) / 100.0
+        }
 
     LaunchedEffect(id) {
         db.collection("items").document(id).get()
             .addOnSuccessListener { doc ->
                 val d = doc.data ?: emptyMap()
                 title = (d["title"] as? String) ?: ""
-                priceText = ((d["priceComputed"] as? Double) ?: 0.0).let { "%.2f".format(it) }
+                val loadedCat = (d["category"] as? String) ?: ""
+                if (loadedCat in categories) category = loadedCat
+                val mats = (d["materials"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                materialsText = mats.joinToString(", ")
+                status = when ((d["status"] as? String)?.lowercase()) {
+                    "sold" -> "Sold"
+                    "reserved" -> "Reserved"
+                    else -> "Available"
+                }
+                val pricing = d["pricing"] as? Map<*, *>
+                priceMode = (pricing?.get("mode") as? String) ?: "manual"
+                val computed = (d["priceComputed"] as? Double) ?: 0.0
+                if (priceMode == "manual") {
+                    manualPriceText = "%.2f".format(computed)
+                } else {
+                    val formula = pricing?.get("formula") as? Map<*, *>
+                    materialCostText = (formula?.get("materialCost") as? Double)?.let { "%.2f".format(it) } ?: ""
+                    laborHoursText = (formula?.get("laborHours") as? Double)?.let { "%.2f".format(it) } ?: ""
+                    hourlyRateText = (formula?.get("hourlyRate") as? Double)?.let { "%.2f".format(it) } ?: "25"
+                    markupText = (formula?.get("markup") as? Double)?.let { "%.2f".format(it) } ?: "2.2"
+                }
+                existingPhotos = (d["photos"] as? List<*>)?.filterIsInstance<Map<*, *>>() ?: emptyList()
                 loading = false
             }
             .addOnFailureListener { e -> error = e.message; loading = false }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Edit Item", style = MaterialTheme.typography.titleLarge)
             OutlinedButton(onClick = onBack) { Text("Back") }
@@ -1021,11 +1003,125 @@ fun EditItemScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = catMenuOpen,
+                    onExpandedChange = { catMenuOpen = !catMenuOpen }
+                ) {
+                    OutlinedTextField(
+                        value = category, onValueChange = {},
+                        readOnly = true, label = { Text("Category") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catMenuOpen) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = catMenuOpen, onDismissRequest = { catMenuOpen = false }) {
+                        categories.forEach { c ->
+                            DropdownMenuItem(text = { Text(c) }, onClick = { category = c; catMenuOpen = false })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
                 OutlinedTextField(
-                    value = priceText, onValueChange = { priceText = it },
-                    label = { Text("Price (computed)") }, singleLine = true,
+                    value = materialsText, onValueChange = { materialsText = it },
+                    label = { Text("Materials (comma-separated)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(8.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = statusMenuOpen,
+                    onExpandedChange = { statusMenuOpen = !statusMenuOpen }
+                ) {
+                    OutlinedTextField(
+                        value = status, onValueChange = {},
+                        readOnly = true, label = { Text("Status") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = statusMenuOpen) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = statusMenuOpen, onDismissRequest = { statusMenuOpen = false }) {
+                        statusOptions.forEach { s ->
+                            DropdownMenuItem(text = { Text(s) }, onClick = { status = s; statusMenuOpen = false })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FilterChip(selected = priceMode == "manual", onClick = { priceMode = "manual" }, label = { Text("Manual price") })
+                    FilterChip(selected = priceMode == "formula", onClick = { priceMode = "formula" }, label = { Text("Formula") })
+                }
+                Spacer(Modifier.height(8.dp))
+
+                if (priceMode == "manual") {
+                    OutlinedTextField(
+                        value = manualPriceText, onValueChange = { manualPriceText = it },
+                        label = { Text("Price") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    OutlinedTextField(materialCostText, { materialCostText = it }, label = { Text("Material cost") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(laborHoursText, { laborHoursText = it }, label = { Text("Labor hours") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(hourlyRateText, { hourlyRateText = it }, label = { Text("Hourly rate") },
+                            singleLine = true, modifier = Modifier.weight(1f))
+                        OutlinedTextField(markupText, { markupText = it }, label = { Text("Markup ×") },
+                            singleLine = true, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Computed price: $${"%.2f".format(computePrice())}")
+                }
+                Spacer(Modifier.height(12.dp))
+
+                if (existingPhotos.isNotEmpty()) {
+                    Text("Current photos:", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(existingPhotos) { photo ->
+                            val url = photo["cloudUrl"] as? String
+                            if (url != null) {
+                                androidx.compose.foundation.layout.Box {
+                                    AsyncImage(
+                                        model = url,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(100.dp)
+                                    )
+                                    TextButton(
+                                        onClick = { existingPhotos = existingPhotos - photo },
+                                        modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
+                                    ) { Text("✕", color = MaterialTheme.colorScheme.error) }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) { Text("Add photo") }
+                    Button(onClick = {
+                        val uri = createImageUri(context)
+                        tempPhotoUri = uri
+                        takePhoto.launch(uri)
+                    }) { Text("Take photo") }
+                    if (newPhotoUri != null) Text("1 new photo")
+                }
+                if (newPhotoUri != null) {
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = newPhotoUri,
+                        contentDescription = "preview",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(160.dp)
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
 
                 Button(
@@ -1033,24 +1129,68 @@ fun EditItemScreen(
                     onClick = {
                         saving = true
                         saveMsg = "Saving…"
-                        val price = priceText.toDoubleOrNull() ?: 0.0
-                        db.collection("items").document(id)
-                            .update(
-                                mapOf(
-                                    "title" to title.trim(),
-                                    "priceComputed" to price,
-                                    "updatedAt" to System.currentTimeMillis()
+                        val priceComputed = computePrice()
+                        val statusCode = when (status) {
+                            "Sold" -> "sold"
+                            "Reserved" -> "reserved"
+                            else -> "available"
+                        }
+                        val updates = mutableMapOf<String, Any?>(
+                            "title" to title.trim(),
+                            "category" to category,
+                            "materials" to materialsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                            "status" to statusCode,
+                            "pricing" to mapOf(
+                                "mode" to priceMode,
+                                "manualPrice" to (if (priceMode == "manual") manualPriceText.toDoubleOrNull() else null),
+                                "formula" to mapOf(
+                                    "materialCost" to (materialCostText.toDoubleOrNull() ?: 0.0),
+                                    "laborHours" to (laborHoursText.toDoubleOrNull() ?: 0.0),
+                                    "hourlyRate" to (hourlyRateText.toDoubleOrNull() ?: 25.0),
+                                    "markup" to (markupText.toDoubleOrNull() ?: 2.2)
                                 )
-                            )
-                            .addOnSuccessListener {
-                                saveMsg = "Saved ✔"
+                            ),
+                            "priceComputed" to priceComputed,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+
+                        fun finishSave(photos: List<Map<*, *>>) {
+                            updates["photos"] = photos
+                            db.collection("items").document(id)
+                                .update(updates)
+                                .addOnSuccessListener { saveMsg = "Saved ✔"; saving = false; onSaved() }
+                                .addOnFailureListener { e -> saveMsg = "Save failed: ${e.message}"; saving = false }
+                        }
+
+                        val newUri = newPhotoUri
+                        if (newUri == null) {
+                            finishSave(existingPhotos)
+                        } else {
+                            try {
+                                val (bytes, size) = compressForUpload(resolver, newUri, 1600, 88)
+                                val path = "images/$uid/items/$id/${System.currentTimeMillis()}.jpg"
+                                FirebaseStorage.getInstance().reference.child(path)
+                                    .putBytes(bytes)
+                                    .addOnSuccessListener {
+                                        FirebaseStorage.getInstance().reference.child(path)
+                                            .downloadUrl.addOnSuccessListener { dl ->
+                                                val newPhoto: Map<*, *> = mapOf(
+                                                    "cloudUrl" to dl.toString(),
+                                                    "w" to size.first,
+                                                    "h" to size.second
+                                                )
+                                                finishSave(existingPhotos + newPhoto)
+                                            }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        saveMsg = "Photo upload failed: ${e.message}"
+                                        saving = false
+                                    }
+                            } catch (e: Exception) {
+                                saveMsg = "Image read failed: ${e.message}"
                                 saving = false
-                                onSaved()
                             }
-                            .addOnFailureListener { e ->
-                                saveMsg = "Save failed: ${e.message}"
-                                saving = false
-                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (saving) "Saving…" else "Save") }
