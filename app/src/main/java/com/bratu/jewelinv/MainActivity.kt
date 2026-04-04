@@ -653,17 +653,12 @@ fun ItemsListScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .padding(16.dp),
         contentPadding = PaddingValues(bottom = listBottomPadding)
     ) {
         item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Items", style = MaterialTheme.typography.titleLarge)
-                OutlinedButton(onClick = onBack) { Text("Back") }
-            }
+            Text("Items", style = MaterialTheme.typography.titleLarge)
         }
 
         item { Spacer(Modifier.height(8.dp)) }
@@ -833,6 +828,11 @@ fun ItemsListScreen(
                     HorizontalDivider()
                 }
             }
+        }
+
+        item {
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back") }
         }
     }
 }
