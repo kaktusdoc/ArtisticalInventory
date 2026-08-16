@@ -882,6 +882,7 @@ fun ItemDetailScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
