@@ -650,18 +650,28 @@ fun ItemsListScreen(
     val visibleCount = displayedItems.size
     val listBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(16.dp),
-        contentPadding = PaddingValues(bottom = listBottomPadding)
+            .padding(16.dp)
     ) {
-        item {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Text("Items", style = MaterialTheme.typography.titleLarge)
+            OutlinedButton(onClick = onBack) { Text("Back") }
         }
 
-        item { Spacer(Modifier.height(8.dp)) }
+        Spacer(Modifier.height(8.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(bottom = listBottomPadding)
+        ) {
 
         item {
             OutlinedTextField(
@@ -830,9 +840,6 @@ fun ItemsListScreen(
             }
         }
 
-        item {
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back") }
         }
     }
 }
