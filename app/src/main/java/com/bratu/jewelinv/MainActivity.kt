@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -202,6 +204,8 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
     var category by remember { mutableStateOf(categories.first()) }
     var catMenuOpen by remember { mutableStateOf(false) }
     var materialsText by remember { mutableStateOf("") }
+    var quantityText by remember { mutableStateOf("1") }
+    var notes by remember { mutableStateOf("") }
     var priceMode by remember { mutableStateOf("manual") }
     var manualPriceText by remember { mutableStateOf("") }
 
@@ -278,8 +282,30 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
 
         OutlinedTextField(
             materialsText, { materialsText = it },
-            label = { Text("Materials (comma-separated) *") },
+            label = { Text("Materials *") },
+            supportingText = { Text("Enter multiple materials separated by commas") },
             singleLine = false, modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+
+        val quantityIsValid = quantityText.toLongOrNull()?.let { it > 0 } == true
+        OutlinedTextField(
+            value = quantityText,
+            onValueChange = { quantityText = it.filter(Char::isDigit) },
+            label = { Text("Quantity *") },
+            supportingText = { Text("Positive whole numbers only") },
+            isError = !quantityIsValid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = notes,
+            onValueChange = { notes = it },
+            label = { Text("Notes") },
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(8.dp))
 
@@ -396,7 +422,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
         Spacer(Modifier.height(16.dp))
 
         Button(
-            enabled = !saving && title.isNotBlank() && materialsText.isNotBlank() &&
+            enabled = !saving && title.isNotBlank() && materialsText.isNotBlank() && quantityIsValid &&
                     ((priceMode == "manual" && manualPriceText.isNotBlank()) || priceMode == "formula"),
             onClick = {
                 saving = true
@@ -430,6 +456,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                         "tags" to listOf<String>(),
                         "materials" to materialsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
                         "gemstones" to listOf<String>(),
+                        "notes" to notes,
                         "metal" to if (metalCode == "None") null else metalCode,
                         "gem" to if (gemCode == "None") null else gemCode,
                         "status" to "available",
@@ -445,7 +472,7 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
                         ),
                         "priceComputed" to priceComputed,
                         "availableForSale" to true,
-                        "stock" to 1,
+                        "stock" to quantityText.toLong(),
                         "createdAt" to System.currentTimeMillis(),
                         "updatedAt" to System.currentTimeMillis(),
                         "ownerUid" to uid
@@ -939,6 +966,7 @@ fun ItemDetailScreen(
                 }
                 Text("Status: $statusLabel")
                 Text("Price: $${"%.2f".format((d["priceComputed"] as? Double) ?: 0.0)}")
+                Text("Quantity: ${(d["stock"] as? Number)?.toLong() ?: 1L}")
 
                 val materials = (d["materials"] as? List<*>)?.filterIsInstance<String>()
                 if (!materials.isNullOrEmpty()) Text("Materials: ${materials.joinToString()}")
@@ -991,6 +1019,8 @@ fun EditItemScreen(
     val categories = listOf("Necklace", "Earrings", "Bracelet", "Ring", "Pendant", "Set", "Component")
     var category by remember { mutableStateOf(categories.first()) }
     var materialsText by remember { mutableStateOf("") }
+    var quantityText by remember { mutableStateOf("1") }
+    var notes by remember { mutableStateOf("") }
     val statusOptions = listOf("Available", "Reserved", "Sold")
     var status by remember { mutableStateOf(statusOptions.first()) }
     var priceMode by remember { mutableStateOf("manual") }
@@ -1041,6 +1071,8 @@ fun EditItemScreen(
                 category = if (loadedCat in categories) loadedCat else categories.first()
                 val mats = (d["materials"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                 materialsText = mats.joinToString(", ")
+                quantityText = ((d["stock"] as? Number)?.toLong() ?: 1L).toString()
+                notes = (d["notes"] as? String) ?: ""
                 status = when ((d["status"] as? String)?.lowercase()) {
                     "sold" -> "Sold"
                     "reserved" -> "Reserved"
@@ -1113,7 +1145,28 @@ fun EditItemScreen(
 
                 OutlinedTextField(
                     value = materialsText, onValueChange = { materialsText = it },
-                    label = { Text("Materials (comma-separated)") },
+                    label = { Text("Materials") },
+                    supportingText = { Text("Enter multiple materials separated by commas") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+
+                val quantityIsValid = quantityText.toLongOrNull()?.let { it > 0 } == true
+                OutlinedTextField(
+                    value = quantityText,
+                    onValueChange = { quantityText = it.filter(Char::isDigit) },
+                    label = { Text("Quantity") },
+                    supportingText = { Text("Positive whole numbers only") },
+                    isError = !quantityIsValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = notes, onValueChange = { notes = it },
+                    label = { Text("Notes") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1262,7 +1315,7 @@ fun EditItemScreen(
                 Spacer(Modifier.height(16.dp))
 
                 Button(
-                    enabled = !saving && title.isNotBlank(),
+                    enabled = !saving && title.isNotBlank() && quantityIsValid,
                     onClick = {
                         saving = true
                         saveMsg = "Saving…"
@@ -1276,6 +1329,8 @@ fun EditItemScreen(
                             "title" to title.trim(),
                             "category" to category,
                             "materials" to materialsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                            "stock" to quantityText.toLong(),
+                            "notes" to notes,
                             "status" to statusCode,
                             "metal" to if (metalCode == "None") null else metalCode,
                             "gem" to if (gemCode == "None") null else gemCode,
