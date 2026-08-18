@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -1030,15 +1031,26 @@ fun EditItemScreen(
     var hourlyRateText by remember { mutableStateOf("25") }
     var markupText by remember { mutableStateOf("2.2") }
 
+    // These lists are the pending edit state. Existing-photo changes are not persisted
+    // until Save, while new photos stay local until they are uploaded during Save.
     var existingPhotos by remember { mutableStateOf<List<Map<*, *>>>(emptyList()) }
-    var newPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    val newPhotoUris = remember { mutableStateListOf<Uri>() }
     var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
     val pickImage = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri -> newPhotoUri = uri }
+    ) { uri ->
+        if (uri != null && existingPhotos.size + newPhotoUris.size < 6) {
+            newPhotoUris.add(uri)
+        }
+    }
     val takePhoto = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
-    ) { success -> if (success) newPhotoUri = tempPhotoUri }
+    ) { success ->
+        val uri = tempPhotoUri
+        if (success && uri != null && existingPhotos.size + newPhotoUris.size < 6) {
+            newPhotoUris.add(uri)
+        }
+    }
 
     var metalCode by remember { mutableStateOf("None") }
     var gemCode by remember { mutableStateOf("None") }
@@ -1103,6 +1115,7 @@ fun EditItemScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
             .navigationBarsPadding()
@@ -1271,21 +1284,28 @@ fun EditItemScreen(
                     Text("Current photos:", style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.height(4.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(existingPhotos) { photo ->
+                        itemsIndexed(existingPhotos) { index, photo ->
                             val url = photo["cloudUrl"] as? String
-                            if (url != null) {
-                                androidx.compose.foundation.layout.Box {
+                            androidx.compose.foundation.layout.Box {
+                                if (url != null) {
                                     AsyncImage(
                                         model = url,
-                                        contentDescription = null,
+                                        contentDescription = "Current photo ${index + 1}",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.size(100.dp)
                                     )
-                                    TextButton(
-                                        onClick = { existingPhotos = existingPhotos - photo },
-                                        modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
-                                    ) { Text("✕", color = MaterialTheme.colorScheme.error) }
+                                } else {
+                                    Surface(modifier = Modifier.size(100.dp)) {
+                                        Text("Photo unavailable", modifier = Modifier.padding(8.dp))
+                                    }
                                 }
+                                TextButton(
+                                    enabled = !saving,
+                                    onClick = {
+                                        existingPhotos = existingPhotos.toMutableList().also { it.removeAt(index) }
+                                    },
+                                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
+                                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
@@ -1293,24 +1313,35 @@ fun EditItemScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
+                    Button(enabled = !saving && existingPhotos.size + newPhotoUris.size < 6, onClick = {
                         pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }) { Text("Add photo") }
-                    Button(onClick = {
+                    Button(enabled = !saving && existingPhotos.size + newPhotoUris.size < 6, onClick = {
                         val uri = createImageUri(context)
                         tempPhotoUri = uri
                         takePhoto.launch(uri)
                     }) { Text("Take photo") }
-                    if (newPhotoUri != null) Text("1 new photo")
+                    if (newPhotoUris.isNotEmpty()) Text("${newPhotoUris.size} new photo(s)")
                 }
-                if (newPhotoUri != null) {
+                if (newPhotoUris.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    AsyncImage(
-                        model = newPhotoUri,
-                        contentDescription = "preview",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().height(160.dp)
-                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(newPhotoUris) { index, uri ->
+                            androidx.compose.foundation.layout.Box {
+                                AsyncImage(
+                                    model = uri,
+                                    contentDescription = "New photo ${index + 1}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(100.dp)
+                                )
+                                TextButton(
+                                    enabled = !saving,
+                                    onClick = { newPhotoUris.removeAt(index) },
+                                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
+                                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
 
@@ -1319,6 +1350,8 @@ fun EditItemScreen(
                     onClick = {
                         saving = true
                         saveMsg = "Saving…"
+                        val photosToKeep = existingPhotos
+                        val pendingNewPhotoUris = newPhotoUris.toList()
                         val priceComputed = computePrice()
                         val statusCode = when (status) {
                             "Sold" -> "sold"
@@ -1356,34 +1389,45 @@ fun EditItemScreen(
                                 .addOnFailureListener { e -> saveMsg = "Save failed: ${e.message}"; saving = false }
                         }
 
-                        val newUri = newPhotoUri
-                        if (newUri == null) {
-                            finishSave(existingPhotos)
+                        if (pendingNewPhotoUris.isEmpty()) {
+                            finishSave(photosToKeep)
                         } else {
-                            try {
-                                val (bytes, size) = compressForUpload(resolver, newUri, 1600, 88)
-                                val path = "images/$uid/items/$id/${System.currentTimeMillis()}.jpg"
-                                FirebaseStorage.getInstance().reference.child(path)
-                                    .putBytes(bytes)
-                                    .addOnSuccessListener {
-                                        FirebaseStorage.getInstance().reference.child(path)
-                                            .downloadUrl.addOnSuccessListener { dl ->
-                                                val newPhoto: Map<*, *> = mapOf(
-                                                    "cloudUrl" to dl.toString(),
-                                                    "w" to size.first,
-                                                    "h" to size.second
-                                                )
-                                                finishSave(existingPhotos + newPhoto)
-                                            }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        saveMsg = "Photo upload failed: ${e.message}"
-                                        saving = false
-                                    }
-                            } catch (e: Exception) {
-                                saveMsg = "Image read failed: ${e.message}"
-                                saving = false
+                            fun uploadNext(index: Int, uploadedPhotos: List<Map<*, *>>) {
+                                if (index >= pendingNewPhotoUris.size) {
+                                    finishSave(photosToKeep + uploadedPhotos)
+                                    return
+                                }
+                                try {
+                                    val (bytes, size) = compressForUpload(resolver, pendingNewPhotoUris[index], 1600, 88)
+                                    val path = "images/$uid/items/$id/${System.currentTimeMillis()}-$index.jpg"
+                                    FirebaseStorage.getInstance().reference.child(path)
+                                        .putBytes(bytes)
+                                        .addOnSuccessListener {
+                                            FirebaseStorage.getInstance().reference.child(path)
+                                                .downloadUrl
+                                                .addOnSuccessListener { dl ->
+                                                    val newPhoto: Map<*, *> = mapOf(
+                                                        "cloudUrl" to dl.toString(),
+                                                        "w" to size.first,
+                                                        "h" to size.second
+                                                    )
+                                                    uploadNext(index + 1, uploadedPhotos + newPhoto)
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    saveMsg = "Photo link failed: ${e.message}"
+                                                    saving = false
+                                                }
+                                        }
+                                        .addOnFailureListener { e ->
+                                            saveMsg = "Photo upload failed: ${e.message}"
+                                            saving = false
+                                        }
+                                } catch (e: Exception) {
+                                    saveMsg = "Image read failed: ${e.message}"
+                                    saving = false
+                                }
                             }
+                            uploadNext(0, emptyList())
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
