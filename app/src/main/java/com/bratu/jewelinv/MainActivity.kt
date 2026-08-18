@@ -1286,26 +1286,40 @@ fun EditItemScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(existingPhotos) { index, photo ->
                             val url = photo["cloudUrl"] as? String
-                            androidx.compose.foundation.layout.Box {
-                                if (url != null) {
-                                    AsyncImage(
-                                        model = url,
-                                        contentDescription = "Current photo ${index + 1}",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(100.dp)
-                                    )
-                                } else {
-                                    Surface(modifier = Modifier.size(100.dp)) {
-                                        Text("Photo unavailable", modifier = Modifier.padding(8.dp))
+                            Column {
+                                androidx.compose.foundation.layout.Box {
+                                    if (url != null) {
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = "Current photo ${index + 1}",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.size(100.dp)
+                                        )
+                                    } else {
+                                        Surface(modifier = Modifier.size(100.dp)) {
+                                            Text("Photo unavailable", modifier = Modifier.padding(8.dp))
+                                        }
                                     }
+                                    TextButton(
+                                        enabled = !saving,
+                                        onClick = {
+                                            existingPhotos = existingPhotos.toMutableList().also { it.removeAt(index) }
+                                        },
+                                        modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
+                                    ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                                 }
-                                TextButton(
-                                    enabled = !saving,
-                                    onClick = {
-                                        existingPhotos = existingPhotos.toMutableList().also { it.removeAt(index) }
-                                    },
-                                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
-                                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                                if (index == 0) {
+                                    Text("Primary", style = MaterialTheme.typography.labelSmall)
+                                } else {
+                                    TextButton(
+                                        enabled = !saving,
+                                        onClick = {
+                                            existingPhotos = existingPhotos.toMutableList().also {
+                                                it.add(0, it.removeAt(index))
+                                            }
+                                        }
+                                    ) { Text("Make primary") }
+                                }
                             }
                         }
                     }
