@@ -965,7 +965,10 @@ fun ItemDetailScreen(
                     "reserved" -> "Reserved"
                     else -> "Available"
                 }
+                val availableForSale = (d["availableForSale"] as? Boolean)
+                    ?: (statusRaw.lowercase() != "reserved" && statusRaw.lowercase() != "sold")
                 Text("Status: $statusLabel")
+                Text("For sale: ${if (availableForSale) "Yes" else "No"}")
                 Text("Price: $${"%.2f".format((d["priceComputed"] as? Double) ?: 0.0)}")
                 Text("Quantity: ${(d["stock"] as? Number)?.toLong() ?: 1L}")
 
@@ -1372,6 +1375,7 @@ fun EditItemScreen(
                             "Reserved" -> "reserved"
                             else -> "available"
                         }
+                        val availableForSale = statusCode == "available"
                         val updates = mutableMapOf<String, Any?>(
                             "title" to title.trim(),
                             "category" to category,
@@ -1379,6 +1383,7 @@ fun EditItemScreen(
                             "stock" to quantityText.toLong(),
                             "notes" to notes,
                             "status" to statusCode,
+                            "availableForSale" to availableForSale,
                             "metal" to if (metalCode == "None") null else metalCode,
                             "gem" to if (gemCode == "None") null else gemCode,
                             "pricing" to mapOf(
