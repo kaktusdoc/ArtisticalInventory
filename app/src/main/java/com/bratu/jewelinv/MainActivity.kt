@@ -1086,7 +1086,9 @@ fun ItemDetailScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Price: $${"%.2f".format((d["priceComputed"] as? Double) ?: 0.0)}")
-                Text("Quantity: ${(d["stock"] as? Number)?.toLong() ?: 1L}")
+                val quantity = (d["stock"] as? Number)?.toLong() ?: 1L
+                Text("Quantity: $quantity")
+                Text("Stock: ${if (quantity > 0) "In stock" else "Out of stock"}")
 
                 val materials = (d["materials"] as? List<*>)?.filterIsInstance<String>()
                 if (!materials.isNullOrEmpty()) Text("Materials: ${materials.joinToString()}")
