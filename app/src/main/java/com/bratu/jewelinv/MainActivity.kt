@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -831,6 +832,7 @@ fun ItemsListScreen(
                     val thumb = row["thumb"] as? String
                     val category = row["category"] as String
                     val statusRaw = (row["status"] as? String) ?: ""
+                    val quantity = (row["stock"] as? Number)?.toLong() ?: 1L
                     val id = row["id"] as String
 
                     val statusLabel = when (statusRaw.lowercase()) {
@@ -857,10 +859,26 @@ fun ItemsListScreen(
                             Spacer(Modifier.width(8.dp))
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(title, style = MaterialTheme.typography.titleMedium)
-                            Text("SKU: $sku - $${"%.2f".format(price)}")
-                            Text("Category: $category")
-                            Text("Status: $statusLabel")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(title, style = MaterialTheme.typography.titleMedium)
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ) {
+                                    Text(
+                                        text = statusLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Text("SKU: $sku · $${"%.2f".format(price)}")
+                            Text("Category: $category · Quantity: $quantity")
                         }
                     }
                     HorizontalDivider()
