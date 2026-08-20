@@ -1,12 +1,14 @@
 package com.bratu.jewelinv
 
 import android.content.ContentResolver
+import android.content.ClipData
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -939,6 +941,7 @@ fun ItemDetailScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit
 ) {
+    val context = LocalContext.current
     var data by remember { mutableStateOf<Map<String, Any?>?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1017,7 +1020,21 @@ fun ItemDetailScreen(
 
                 Text(d["title"] as? String ?: "", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
-                Text("SKU: ${d["sku"] ?: ""}")
+                val sku = d["sku"]?.toString() ?: ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("SKU: $sku")
+                    TextButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("SKU", sku))
+                            Toast.makeText(context, "SKU copied", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        Text("Copy SKU")
+                    }
+                }
                 Text("Category: ${d["category"] ?: ""}")
 
                 val statusRaw = (d["status"] as? String) ?: ""
