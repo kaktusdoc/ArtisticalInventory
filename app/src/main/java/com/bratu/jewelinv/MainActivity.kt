@@ -903,6 +903,8 @@ fun ItemDetailScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var updatingStatus by remember { mutableStateOf(false) }
+    var statusUpdateError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(id) {
         db.collection("items").document(id).get()
@@ -987,6 +989,61 @@ fun ItemDetailScreen(
                     ?: (statusRaw.lowercase() != "reserved" && statusRaw.lowercase() != "sold")
                 Text("Status: $statusLabel")
                 Text("For sale: ${if (availableForSale) "Yes" else "No"}")
+                Spacer(Modifier.height(8.dp))
+                Text("Quick status", style = MaterialTheme.typography.labelLarge)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    val statusActions = listOf(
+                        Triple("available", "Available", true),
+                        Triple("reserved", "Reserved", false),
+                        Triple("sold", "Sold", false)
+                    )
+                    statusActions.forEachIndexed { index, (status, label, forSale) ->
+                        SegmentedButton(
+                            selected = statusRaw.lowercase().let {
+                                when (it) {
+                                    "reserved", "sold" -> it
+                                    else -> "available"
+                                }
+                            } == status,
+                            onClick = {
+                                updatingStatus = true
+                                statusUpdateError = null
+                                db.collection("items").document(id).update(
+                                    mapOf(
+                                        "status" to status,
+                                        "availableForSale" to forSale,
+                                        "updatedAt" to System.currentTimeMillis()
+                                    )
+                                ).addOnSuccessListener {
+                                    data = data?.toMutableMap()?.apply {
+                                        put("status", status)
+                                        put("availableForSale", forSale)
+                                    }
+                                    updatingStatus = false
+                                }.addOnFailureListener { e ->
+                                    statusUpdateError = "Couldn't update status: ${e.message ?: "Try again."}"
+                                    updatingStatus = false
+                                }
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index, statusActions.size),
+                            enabled = !updatingStatus,
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                if (updatingStatus) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Updating status…", style = MaterialTheme.typography.bodySmall)
+                }
+                if (statusUpdateError != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        statusUpdateError!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 Text("Price: $${"%.2f".format((d["priceComputed"] as? Double) ?: 0.0)}")
                 Text("Quantity: ${(d["stock"] as? Number)?.toLong() ?: 1L}")
 
