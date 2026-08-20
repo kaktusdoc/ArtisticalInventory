@@ -290,12 +290,12 @@ fun AddProductScreen(db: FirebaseFirestore, auth: FirebaseAuth, onClose: () -> U
         )
         Spacer(Modifier.height(8.dp))
 
-        val quantityIsValid = quantityText.toLongOrNull()?.let { it > 0 } == true
+        val quantityIsValid = quantityText.toLongOrNull()?.let { it >= 0 } == true
         OutlinedTextField(
             value = quantityText,
-            onValueChange = { quantityText = it.filter(Char::isDigit) },
+            onValueChange = { if (it.all(Char::isDigit)) quantityText = it },
             label = { Text("Quantity *") },
-            supportingText = { Text("Positive whole numbers only") },
+            supportingText = { Text("Whole numbers 0 or greater") },
             isError = !quantityIsValid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
@@ -582,6 +582,10 @@ fun ItemsListScreen(
     val statusFilterOptions = listOf("All statuses", "Available", "Reserved", "Sold")
     var statusFilterMode by rememberSaveable { mutableStateOf("All statuses") }
 
+    // Stock filter options
+    val stockFilterOptions = listOf("All stock", "In stock", "Out of stock")
+    var stockFilterMode by rememberSaveable { mutableStateOf("All stock") }
+
     // Load items once
     LaunchedEffect(Unit) {
         db.collection("items")
@@ -599,6 +603,7 @@ fun ItemsListScreen(
                         "price" to (d.getDouble("priceComputed") ?: 0.0),
                         "category" to (d.getString("category") ?: ""),
                         "status" to (d.getString("status") ?: ""),
+                        "stock" to (d.getLong("stock") ?: 1L),
                         "thumb" to thumb,
                         "createdAt" to (d.getLong("createdAt") ?: 0L)
                     )
@@ -618,7 +623,8 @@ fun ItemsListScreen(
         activeCategory,
         sortMode,
         priceFilterMode,
-        statusFilterMode
+        statusFilterMode,
+        stockFilterMode
     ) {
         val base = rows ?: emptyList()
 
@@ -634,6 +640,7 @@ fun ItemsListScreen(
             val sku = (row["sku"] as? String) ?: ""
             val category = (row["category"] as? String) ?: ""
             val statusRaw = (row["status"] as? String) ?: ""
+            val stock = (row["stock"] as? Number)?.toLong() ?: 1L
 
             val statusNorm = when (statusRaw.lowercase()) {
                 "in_progress" -> "available"
@@ -653,7 +660,13 @@ fun ItemsListScreen(
             val matchesStatus =
                 statusCode == null || statusNorm.equals(statusCode, ignoreCase = true)
 
-            matchesSearch && matchesCategory && matchesStatus
+            val matchesStock = when (stockFilterMode) {
+                "In stock" -> stock > 0L
+                "Out of stock" -> stock <= 0L
+                else -> true
+            }
+
+            matchesSearch && matchesCategory && matchesStatus && matchesStock
         }
 
         val priceFiltered = filtered.filter { row ->
@@ -710,6 +723,25 @@ fun ItemsListScreen(
                 label = { Text("Search") },
                 singleLine = true
             )
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+
+        item {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                stockFilterOptions.forEach { mode ->
+                    FilterChip(
+                        selected = stockFilterMode == mode,
+                        onClick = { stockFilterMode = mode },
+                        modifier = Modifier.wrapContentWidth(),
+                        label = { Text(mode) }
+                    )
+                }
+            }
         }
 
         item { Spacer(Modifier.height(8.dp)) }
@@ -805,6 +837,7 @@ fun ItemsListScreen(
                         activeCategory = "All"
                         priceFilterMode = "All prices"
                         statusFilterMode = "All statuses"
+                        stockFilterMode = "All stock"
                         sortMode = "Newest"
                     }
                 ) {
@@ -842,6 +875,14 @@ fun ItemsListScreen(
                         "in_progress" -> "Available"
                         else -> statusRaw
                     }
+                    val (statusBadgeColor, statusBadgeContentColor) = when (statusRaw.lowercase()) {
+                        "reserved" -> MaterialTheme.colorScheme.tertiaryContainer to
+                                MaterialTheme.colorScheme.onTertiaryContainer
+                        "sold" -> MaterialTheme.colorScheme.errorContainer to
+                                MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.secondaryContainer to
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                    }
 
                     Row(
                         Modifier
@@ -867,8 +908,8 @@ fun ItemsListScreen(
                                 Text(title, style = MaterialTheme.typography.titleMedium)
                                 Surface(
                                     shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = statusBadgeColor,
+                                    contentColor = statusBadgeContentColor
                                 ) {
                                     Text(
                                         text = statusLabel,
@@ -1242,12 +1283,12 @@ fun EditItemScreen(
                 )
                 Spacer(Modifier.height(8.dp))
 
-                val quantityIsValid = quantityText.toLongOrNull()?.let { it > 0 } == true
+                val quantityIsValid = quantityText.toLongOrNull()?.let { it >= 0 } == true
                 OutlinedTextField(
                     value = quantityText,
-                    onValueChange = { quantityText = it.filter(Char::isDigit) },
+                    onValueChange = { if (it.all(Char::isDigit)) quantityText = it },
                     label = { Text("Quantity") },
-                    supportingText = { Text("Positive whole numbers only") },
+                    supportingText = { Text("Whole numbers 0 or greater") },
                     isError = !quantityIsValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
