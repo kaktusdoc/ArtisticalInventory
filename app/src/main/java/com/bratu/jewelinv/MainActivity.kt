@@ -31,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -128,7 +130,7 @@ fun LoginScreen(onSignedIn: () -> Unit, auth: FirebaseAuth) {
 
 /* ---------------- Home / simple nav ---------------- */
 
-private enum class Screen { HOME, LIST, DETAIL, EDIT, ADD }
+private enum class Screen { HOME, LIST, DETAIL, LABEL_PREVIEW, EDIT, ADD }
 
 @Composable
 fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth) {
@@ -150,7 +152,14 @@ fun HomeScreen(onSignOut: () -> Unit, db: FirebaseFirestore, auth: FirebaseAuth)
         Screen.DETAIL -> ItemDetailScreen(
             db = db, id = selectedId!!,
             onBack = { screen = Screen.LIST },
-            onEdit = { screen = Screen.EDIT }
+            onEdit = { screen = Screen.EDIT },
+            onPrintLabel = { screen = Screen.LABEL_PREVIEW }
+        )
+
+        Screen.LABEL_PREVIEW -> LabelPreviewScreen(
+            db = db,
+            id = selectedId!!,
+            onBack = { screen = Screen.DETAIL }
         )
 
         Screen.LIST -> ItemsListScreen(
@@ -939,7 +948,8 @@ fun ItemDetailScreen(
     db: FirebaseFirestore,
     id: String,
     onBack: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onPrintLabel: () -> Unit
 ) {
     val context = LocalContext.current
     var data by remember { mutableStateOf<Map<String, Any?>?>(null) }
@@ -1036,6 +1046,12 @@ fun ItemDetailScreen(
                     }
                 }
                 Text("Category: ${d["category"] ?: ""}")
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onPrintLabel,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Print label") }
 
                 val statusRaw = (d["status"] as? String) ?: ""
                 val statusLabel = when (statusRaw.lowercase()) {
@@ -1135,6 +1151,148 @@ fun ItemDetailScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (deleting) "Deleting…" else "Delete") }
+            }
+        }
+    }
+}
+
+/* ---------------- Label Preview ---------------- */
+
+@Composable
+fun LabelPreviewScreen(
+    db: FirebaseFirestore,
+    id: String,
+    onBack: () -> Unit
+) {
+    var data by remember { mutableStateOf<Map<String, Any?>?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(id) {
+        db.collection("items").document(id).get()
+            .addOnSuccessListener { snap -> data = snap.data; loading = false }
+            .addOnFailureListener { e -> error = e.message; loading = false }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Label Preview", style = MaterialTheme.typography.titleLarge)
+            OutlinedButton(onClick = onBack) { Text("Back") }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Preview only · approximately 60 × 15 mm label",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(24.dp))
+
+        when {
+            loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error)
+            else -> {
+                val d = data ?: return@Column
+                val title = d["title"] as? String ?: "Untitled item"
+                val price = (d["priceComputed"] as? Number)?.toDouble() ?: 0.0
+                val sku = d["sku"]?.toString().orEmpty()
+                val category = d["category"]?.toString().orEmpty()
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(4f),
+                    color = Color.Transparent,
+                    contentColor = Color(0xFF1B1B1B)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            color = Color.White,
+                            shape = MaterialTheme.shapes.medium,
+                            tonalElevation = 2.dp,
+                            shadowElevation = 4.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    title,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "$${"%.2f".format(price)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(30.dp),
+                            color = Color.White,
+                            shape = MaterialTheme.shapes.small
+                        ) {}
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            color = Color.White,
+                            shape = MaterialTheme.shapes.medium,
+                            tonalElevation = 2.dp,
+                            shadowElevation = 4.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("SKU", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    sku.ifBlank { "—" },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (category.isNotBlank()) {
+                                    Text(
+                                        category,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Print") }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Printer setup pending. Printing will be enabled after printer and label calibration.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
